@@ -1,8 +1,8 @@
 import express from 'express';
-import pg from 'pg';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import crypto from 'crypto';
+import pool from './db/connection.js';
 
 dotenv.config();
 
@@ -10,104 +10,6 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 app.use(express.static('public'));
-
-const { Pool } = pg;
-
-const pool = new Pool({
-  user: process.env.DB_USER,
-  host: process.env.DB_HOST,
-  database: process.env.DB_NAME,
-  password: process.env.DB_PASSWORD,
-  port: process.env.DB_PORT,
-  ssl: {
-    rejectUnauthorized: false
-  }
-});
-
-// Initialize database tables
-async function initDB() {
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-
-    // Identity mappings table
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS identity_mappings (
-        id SERIAL PRIMARY KEY,
-        visitor_id VARCHAR(255),
-        ip_address VARCHAR(45),
-        identity JSONB NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE(visitor_id),
-        UNIQUE(ip_address)
-      )
-    `);
-
-    // Session mappings table
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS session_mappings (
-        session_id VARCHAR(255) PRIMARY KEY,
-        visitor_id VARCHAR(255) NOT NULL,
-        ip_address VARCHAR(45),
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    // Drop existing events table if exists
-    await client.query(`DROP TABLE IF EXISTS events`);
-    
-    // Events table
-    await client.query(`
-      CREATE TABLE events (
-        id SERIAL PRIMARY KEY,
-        session_id VARCHAR(255) NOT NULL,
-        visitor_id VARCHAR(255) NOT NULL,
-        event_name VARCHAR(255) NOT NULL,
-        properties JSONB,
-        identity JSONB,
-        ip_address VARCHAR(45),
-        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    // Drop existing identity_mappings if exists
-    await client.query(`DROP TABLE IF EXISTS identity_mappings`);
-
-    // Identity mappings table
-    await client.query(`
-      CREATE TABLE identity_mappings (
-        id SERIAL PRIMARY KEY,
-        visitor_id VARCHAR(255),
-        ip_address VARCHAR(45),
-        identity JSONB NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE(visitor_id),
-        UNIQUE(ip_address)
-      )
-    `);
-
-    // Drop existing session_mappings if exists
-    await client.query(`DROP TABLE IF EXISTS session_mappings`);
-
-    // Session mappings table
-    await client.query(`
-      CREATE TABLE session_mappings (
-        session_id VARCHAR(255) PRIMARY KEY,
-        visitor_id VARCHAR(255) NOT NULL,
-        ip_address VARCHAR(45),
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    await client.query('COMMIT');
-    console.log('Database initialized successfully');
-  } catch (err) {
-    await client.query('ROLLBACK');
-    console.error('Error initializing database:', err);
-  } finally {
-    client.release();
-  }
-}
 
 // Helper function to generate session ID
 function generateSessionId() {
@@ -271,8 +173,6 @@ app.get('/api/events/:sessionId', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch events' });
   }
 });
-
-initDB();
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
