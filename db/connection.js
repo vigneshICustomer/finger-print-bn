@@ -16,4 +16,9 @@ const pool = new Pool({
   }
 });
 
-export default pool;
+// Function to get a database client
+async function getClient() {
+  return await pool.connect();
+}
+
+export { pool, getClient };
